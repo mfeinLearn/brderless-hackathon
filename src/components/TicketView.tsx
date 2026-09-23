@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Ticket, TriageResult } from '../../shared/types';
 import { fetchTicket, fetchTriage, generateTriage } from '../api';
+import { shouldApplyTicketResult } from '../ticketSelection';
 import { TriagePanel } from './TriagePanel';
 
 interface Props {
@@ -11,33 +12,75 @@ interface Props {
 export function TicketView({ ticketId, onTriageComplete }: Props) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [triage, setTriage] = useState<TriageResult | null>(null);
-  const [triageLoading, setTriageLoading] = useState(false);
+  const [triageLoading, setTriageLoading] = useState(true);
   const [triageError, setTriageError] = useState<string | null>(null);
+  const [seenTicketId, setSeenTicketId] = useState(ticketId);
+  const selectedIdRef = useRef(ticketId);
+  selectedIdRef.current = ticketId;
+
+  if (seenTicketId !== ticketId) {
+    setSeenTicketId(ticketId);
+    setTicket(null);
+    setTriage(null);
+    setTriageError(null);
+    setTriageLoading(true);
+  }
 
   useEffect(() => {
-    setTicket(null);
-    fetchTicket(ticketId).then(setTicket).catch(() => setTicket(null));
+    const requestedId = ticketId;
+    let active = true;
+    const stillSelected = (responseTicketId: string) =>
+      active && shouldApplyTicketResult(responseTicketId, selectedIdRef.current);
 
-    // Load the existing triage, or generate one on first view.
     setTriageLoading(true);
     setTriageError(null);
-    fetchTriage(ticketId)
-      .catch(() => generateTriage(ticketId).then((r) => (onTriageComplete(), r)))
-      .then((result) => setTriage(result))
-      .catch((e: Error) => setTriageError(e.message))
-      .finally(() => setTriageLoading(false));
+
+    fetchTicket(requestedId)
+      .then((next) => {
+        if (stillSelected(next.id)) setTicket(next);
+      })
+      .catch(() => {
+        if (stillSelected(requestedId)) setTicket(null);
+      });
+
+    // Load the existing triage, or generate one on first view.
+    fetchTriage(requestedId)
+      .catch(() => generateTriage(requestedId).then((r) => (onTriageComplete(), r)))
+      .then((result) => {
+        if (result && stillSelected(result.ticketId)) setTriage(result);
+      })
+      .catch((e: Error) => {
+        if (stillSelected(requestedId)) setTriageError(e.message);
+      })
+      .finally(() => {
+        if (stillSelected(requestedId)) setTriageLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [ticketId]);
 
   const regenerate = () => {
+    const requestedId = ticketId;
     setTriageLoading(true);
     setTriageError(null);
-    generateTriage(ticketId)
+    generateTriage(requestedId)
       .then((result) => {
+        if (!shouldApplyTicketResult(result.ticketId, selectedIdRef.current)) return;
         setTriage(result);
         onTriageComplete();
       })
-      .catch((e: Error) => setTriageError(e.message))
-      .finally(() => setTriageLoading(false));
+      .catch((e: Error) => {
+        if (shouldApplyTicketResult(requestedId, selectedIdRef.current)) {
+          setTriageError(e.message);
+        }
+      })
+      .finally(() => {
+        if (shouldApplyTicketResult(requestedId, selectedIdRef.current)) {
+          setTriageLoading(false);
+        }
+      });
   };
 
   if (!ticket) return <div className="empty-state">Loading ticket…</div>;
