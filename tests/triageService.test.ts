@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { enforceActiveRefundWindow, runTriage } from '../server/triage/triageService';
+import {
+  applyPolicyFloors,
+  enforceActiveRefundWindow,
+  runTriage,
+} from '../server/triage/triageService';
 import { db, getTicket } from '../server/store';
 import { setLLMClient } from '../server/llm/client';
 import { MockLLM } from '../server/llm/mock';
@@ -33,7 +37,6 @@ describe('runTriage (with mock LLM)', () => {
     expect(result.citations.map((c) => c.docId)).toContain('policy-enterprise-sla');
   });
 
-
   it('does not copy internal notes into the customer reply', async () => {
     const cases = [
       { id: 'T-1009', note: 'Fraud risk score: 87' },
@@ -48,6 +51,21 @@ describe('runTriage (with mock LLM)', () => {
       expect(result.reply, id).not.toContain(note);
       expect(result.reply, id).not.toContain('Also, regarding your account:');
     }
+  });
+
+  it('escalates security and privacy matches and does not escalate praise', async () => {
+    const security = await runTriage(getTicket('T-1004')!);
+    expect(security.escalate).toBe(true);
+    expect(db.triageResults.get('T-1004')?.escalate).toBe(true);
+
+    const privacy = await runTriage(getTicket('T-1007')!);
+    expect(privacy.escalate).toBe(true);
+    expect(privacy.reply.toLowerCase()).toContain('privacy team');
+    expect(privacy.reply).not.toContain('provide a complete export');
+    expect(db.triageResults.get('T-1007')?.escalate).toBe(true);
+
+    const praise = await runTriage(getTicket('T-1012')!);
+    expect(praise.escalate).toBe(false);
   });
 
   it('refuses an injected refund approval for T-1008', async () => {
@@ -99,6 +117,46 @@ describe('runTriage (with mock LLM)', () => {
       expect(result.reply).not.toContain('started the refund process');
     }
   );
+});
+
+describe('applyPolicyFloors', () => {
+  const fulfilment =
+    'We have received your data export request. We will verify your identity against the account email and provide a complete export within 30 days as required.';
+
+  it('raises escalate for a security category when the security policy was retrieved', () => {
+    const result = applyPolicyFloors('Security', false, 'Reset your password.', [
+      'policy-security-incident',
+    ]);
+    expect(result.escalate).toBe(true);
+    expect(result.reply).toBe('Reset your password.');
+  });
+
+  it('does not escalate a security category when that policy was not retrieved', () => {
+    const result = applyPolicyFloors('security', false, 'Reset your password.', [
+      'policy-cancellation',
+    ]);
+    expect(result.escalate).toBe(false);
+  });
+
+  it('routes a privacy export to the privacy team and does not let the model lower escalate', () => {
+    const result = applyPolicyFloors('data_request', false, fulfilment, ['policy-data-privacy']);
+    expect(result.escalate).toBe(true);
+    expect(result.reply.toLowerCase()).toContain('privacy team');
+    expect(result.reply).not.toContain('provide a complete export');
+  });
+
+  it('does not escalate praise that only retrieved the privacy policy', () => {
+    const result = applyPolicyFloors('general', false, 'Thanks for the note.', [
+      'policy-data-privacy',
+    ]);
+    expect(result.escalate).toBe(false);
+    expect(result.reply).toBe('Thanks for the note.');
+  });
+
+  it('keeps a model escalate when no policy floor matches', () => {
+    const result = applyPolicyFloors('outage', true, 'We are on it.', ['policy-enterprise-sla']);
+    expect(result.escalate).toBe(true);
+  });
 });
 
 describe('enforceActiveRefundWindow', () => {

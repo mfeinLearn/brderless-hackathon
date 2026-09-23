@@ -19,6 +19,44 @@ export function purchaseAgeDays(ticket: Ticket): number | null {
   );
 }
 
+const SECURITY_CATEGORIES = new Set(['security']);
+const PRIVACY_CATEGORIES = new Set(['privacy', 'data_request']);
+
+export interface PolicyFloor {
+  escalate: boolean;
+  reply: string;
+}
+
+/**
+ * Retrieved policy sets a floor. The model may raise escalate and may not lower it.
+ * A privacy export is routed to the privacy team instead of fulfilled by the agent.
+ */
+export function applyPolicyFloors(
+  category: string,
+  escalate: boolean,
+  reply: string,
+  docIds: readonly string[]
+): PolicyFloor {
+  const cat = category.trim().toLowerCase();
+  let nextEscalate = escalate;
+  let nextReply = reply;
+
+  if (SECURITY_CATEGORIES.has(cat) && docIds.includes('policy-security-incident')) {
+    nextEscalate = true;
+  }
+
+  if (PRIVACY_CATEGORIES.has(cat) && docIds.includes('policy-data-privacy')) {
+    nextEscalate = true;
+    nextReply = [
+      'Hi, thanks for reaching out.',
+      'We have received your request and routed it to the privacy team for identity verification. Support agents cannot provide the export directly.',
+      'Best regards,\nSupport Team',
+    ].join('\n\n');
+  }
+
+  return { escalate: nextEscalate, reply: nextReply };
+}
+
 /**
  * The model may draft an approval, including when the customer message tells it to.
  * A purchase outside the active window cannot be stored as an approved refund.
@@ -46,13 +84,19 @@ export async function runTriage(ticket: Ticket): Promise<TriageResult> {
   const llm = getLLMClient();
   const raw = await llm.complete({ system: SYSTEM_PROMPT, user: prompt });
   const parsed = parseTriageResponse(raw);
+  const floored = applyPolicyFloors(
+    parsed.category,
+    parsed.escalate,
+    parsed.reply,
+    retrieved.map((r) => r.doc.id)
+  );
 
   const result: TriageResult = {
     ticketId: ticket.id,
     category: parsed.category,
     urgency: parsed.urgency,
-    escalate: parsed.escalate,
-    reply: enforceActiveRefundWindow(ticket, parsed.reply),
+    escalate: floored.escalate,
+    reply: enforceActiveRefundWindow(ticket, floored.reply),
     reasoning: parsed.reasoning,
     citations: retrieved.map((r) => ({
       docId: r.doc.id,
