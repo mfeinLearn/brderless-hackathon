@@ -14,6 +14,8 @@ and recommends whether to escalate.
 
 ## Setup
 
+Node 20 or newer (`process.loadEnvFile`). This repo has no linter; `npm test` is the check.
+
 ```bash
 npm install
 cp .env.example .env   # defaults work out of the box (mock LLM, no API key needed)
