@@ -72,6 +72,51 @@ export function enforceActiveRefundWindow(ticket: Ticket, reply: string): string
   ].join('\n\n');
 }
 
+const LOG_PREVIEW_LIMIT = 240;
+const LOG_RAW_LIMIT = 1000;
+
+export interface TriageLogDoc {
+  id: string;
+  status: string;
+  audience: string;
+}
+
+export interface TriageLog {
+  ticketId: string;
+  retrieved: TriageLogDoc[];
+  promptLength: number;
+  promptPreview: string;
+  raw: string;
+}
+
+function redactForLog(text: string): string {
+  return text
+    .replace(/Internal notes:[\s\S]*?(?=\n(?:Relevant policies:|Triage this ticket)|$)/gi, 'Internal notes: [redacted]\n')
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)\b/g, '[redacted-secret]');
+}
+
+/** One server log record. Not part of the HTTP response. */
+export function buildTriageLog(input: {
+  ticketId: string;
+  retrieved: { id: string; status?: string; audience?: string }[];
+  prompt: string;
+  raw: string;
+}): TriageLog {
+  const promptPreview = redactForLog(input.prompt).slice(0, LOG_PREVIEW_LIMIT);
+  return {
+    ticketId: input.ticketId,
+    retrieved: input.retrieved.map((doc) => ({
+      id: doc.id,
+      status: doc.status ?? '',
+      audience: doc.audience ?? '',
+    })),
+    promptLength: input.prompt.length,
+    promptPreview,
+    raw: redactForLog(input.raw).slice(0, LOG_RAW_LIMIT),
+  };
+}
+
 export async function runTriage(ticket: Ticket): Promise<TriageResult> {
   const query = `${ticket.subject} ${ticket.message}`;
   const retrieved = searchPolicies(query, db.policies, 3);
@@ -83,6 +128,20 @@ export async function runTriage(ticket: Ticket): Promise<TriageResult> {
 
   const llm = getLLMClient();
   const raw = await llm.complete({ system: SYSTEM_PROMPT, user: prompt });
+  console.log(
+    `[triage] ${JSON.stringify(
+      buildTriageLog({
+        ticketId: ticket.id,
+        retrieved: retrieved.map((r) => ({
+          id: r.doc.id,
+          status: r.doc.status,
+          audience: r.doc.audience,
+        })),
+        prompt,
+        raw,
+      })
+    )}`
+  );
   const parsed = parseTriageResponse(raw);
   const floored = applyPolicyFloors(
     parsed.category,
@@ -107,6 +166,5 @@ export async function runTriage(ticket: Ticket): Promise<TriageResult> {
   };
 
   db.triageResults.set(ticket.id, result);
-  console.log(`[triage] ${ticket.id} -> ${result.category}/${result.urgency}`);
   return result;
 }
