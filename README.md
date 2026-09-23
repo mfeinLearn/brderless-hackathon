@@ -20,6 +20,8 @@ cp .env.example .env   # defaults work out of the box (mock LLM, no API key need
 npm run dev            # starts API on :3001 and web app on :5173
 ```
 
+The API loads `.env` from the project root on startup.
+
 Open http://localhost:5173.
 
 To use a real LLM instead of the mock, set in `.env`:

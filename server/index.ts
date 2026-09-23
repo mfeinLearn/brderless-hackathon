@@ -1,5 +1,11 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import express from 'express';
-import { api } from './routes';
+
+const envPath = resolve(process.cwd(), '.env');
+if (existsSync(envPath)) process.loadEnvFile(envPath);
+
+const { api } = await import('./routes');
 
 const app = express();
 app.use(express.json());
