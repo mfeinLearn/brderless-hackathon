@@ -34,6 +34,24 @@ describe('parseTriageResponse', () => {
     );
   });
 
+  it.each([
+    ['High', 'high'],
+    ['urgent', 'high'],
+    ['Medium', 'medium'],
+    ['normal', 'medium'],
+    ['Low', 'low'],
+    ['low', 'low'],
+  ])('normalizes urgency %s to %s', (raw, expected) => {
+    const result = parseTriageResponse(JSON.stringify({ ...validPayload, urgency: raw }));
+    expect(result.urgency).toBe(expected);
+  });
+
+  it('throws when urgency is outside the canonical set', () => {
+    expect(() =>
+      parseTriageResponse(JSON.stringify({ ...validPayload, urgency: 'critical' }))
+    ).toThrow(/unknown urgency/);
+  });
+
   it('throws when a required field is missing', () => {
     const { reply, ...withoutReply } = validPayload;
     expect(() => parseTriageResponse(JSON.stringify(withoutReply))).toThrow(
