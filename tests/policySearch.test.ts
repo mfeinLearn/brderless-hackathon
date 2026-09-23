@@ -14,10 +14,16 @@ describe('tokenize', () => {
 });
 
 describe('searchPolicies', () => {
-  it('returns refund-related policies for a refund query', () => {
+  it('ranks the active public refund policy and drops deprecated and internal docs', () => {
     const results = searchPolicies('I want a refund for my subscription', policies);
     expect(results.length).toBeGreaterThan(0);
-    expect(results[0].doc.title.toLowerCase()).toContain('refund');
+    expect(results[0].doc.id).toBe('policy-refund-v3');
+    expect(results.map((r) => r.doc.id)).not.toContain('policy-refund-v2');
+    expect(results.map((r) => r.doc.id)).not.toContain('policy-internal-playbook');
+    for (const { doc } of results) {
+      expect(doc.status).toBe('active');
+      expect(doc.audience).toBe('public');
+    }
   });
 
   it('returns the SLA policy for an outage query', () => {

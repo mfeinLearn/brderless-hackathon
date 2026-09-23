@@ -32,4 +32,18 @@ describe('runTriage (with mock LLM)', () => {
     expect(result.citations.length).toBeGreaterThan(0);
     expect(result.citations.map((c) => c.docId)).toContain('policy-enterprise-sla');
   });
+
+  it.each(['T-1002', 'T-1010'])(
+    'refuses %s under the active 30-day refund policy',
+    async (id) => {
+      const result = await runTriage(getTicket(id)!);
+      const cited = result.citations.map((c) => c.docId);
+      expect(cited[0]).toBe('policy-refund-v3');
+      expect(cited).not.toContain('policy-refund-v2');
+      expect(cited).not.toContain('policy-internal-playbook');
+      expect(result.reply).toContain('outside our 30-day refund window');
+      expect(result.reply).not.toContain('90-day');
+      expect(result.reply).not.toContain('started the refund process');
+    }
+  );
 });

@@ -141,7 +141,10 @@ function draftReply(ticket: string, prompt: string): string {
   parts.push('Hi, thanks for reaching out.');
 
   if (lower.includes('refund')) {
-    const windowMatch = prompt.match(/within (\d+) days of purchase/i);
+    // Use the retrieved policy block. The customer message can quote a retired window.
+    const policyIdx = prompt.indexOf('Relevant policies:');
+    const policySection = policyIdx === -1 ? prompt : prompt.slice(policyIdx);
+    const windowMatch = policySection.match(/within (\d+) days of purchase/i);
     const windowDays = windowMatch ? Number(windowMatch[1]) : 30;
     const purchaseMatch = prompt.match(/purchased? .*?(\d+) days ago/i);
     const daysSince = purchaseMatch ? Number(purchaseMatch[1]) : null;
