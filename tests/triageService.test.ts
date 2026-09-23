@@ -33,6 +33,23 @@ describe('runTriage (with mock LLM)', () => {
     expect(result.citations.map((c) => c.docId)).toContain('policy-enterprise-sla');
   });
 
+
+  it('does not copy internal notes into the customer reply', async () => {
+    const cases = [
+      { id: 'T-1009', note: 'Fraud risk score: 87' },
+      { id: 'T-1003', note: 'INC-4432' },
+      { id: 'T-1005', note: 'Offered pause option via chat on Jun 2, declined.' },
+      { id: 'T-1006', note: 'pending auth hold' },
+      { id: 'T-1010', note: 'old (pre-2025) refund policy wording' },
+      { id: 'T-1013', note: 'mailbox full' },
+    ];
+    for (const { id, note } of cases) {
+      const result = await runTriage(getTicket(id)!);
+      expect(result.reply, id).not.toContain(note);
+      expect(result.reply, id).not.toContain('Also, regarding your account:');
+    }
+  });
+
   it.each(['T-1002', 'T-1010'])(
     'refuses %s under the active 30-day refund policy',
     async (id) => {

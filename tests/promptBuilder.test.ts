@@ -22,6 +22,13 @@ describe('buildTriagePrompt', () => {
     expect(prompt).toContain('pro plan');
     expect(prompt).toContain('$49/mo');
   });
+
+  it('omits internal notes from the customer-facing prompt', () => {
+    const flagged = tickets.find((t) => t.id === 'T-1009')!;
+    const prompt = buildTriagePrompt(flagged, []);
+    expect(prompt).not.toContain('Fraud risk score');
+    expect(prompt).not.toContain('Internal notes:');
+  });
 });
 
 describe('SYSTEM_PROMPT', () => {
