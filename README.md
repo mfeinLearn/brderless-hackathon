@@ -20,7 +20,7 @@ cp .env.example .env   # defaults work out of the box (mock LLM, no API key need
 npm run dev            # starts API on :3001 and web app on :5173
 ```
 
-The API loads `.env` from the project root on startup.
+The API loads `.env` from the project root on startup. `API_PORT` is the port for both the API and the Vite `/api` proxy. The default is 3001. Restart the API and Vite after changing it.
 
 Open http://localhost:5173.
 
@@ -40,7 +40,7 @@ GEMINI_API_KEY=...        # https://aistudio.google.com/apikey
 | --------------- | --------------------------------------------- |
 | `npm run dev`   | Run API + frontend together (watch mode)      |
 | `npm run dev:api` | API only (http://localhost:3001)            |
-| `npm run dev:web` | Frontend only (proxies `/api` to :3001)     |
+| `npm run dev:web` | Frontend only (proxies `/api` to `API_PORT`, default 3001) |
 | `npm test`      | Run the Vitest suite                          |
 | `npm run build` | Typecheck + production build of the frontend  |
 
